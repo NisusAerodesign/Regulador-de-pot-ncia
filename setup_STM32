@@ -2,6 +2,8 @@ Instruções de como fazer o setup do STM32 com o conversor USB para TTL:
 https://www.arduinoecia.com.br/como-programar-o-stm32-via-usb-com-ide-arduino-e-sem-precisar-do-gravador/
 https://github.com/palhartinger/HowTo-STM32F103C8T6/wiki/6_Programming-with-UART
 
+Firmware do bootloader: https://github.com/rogerclarkmelbourne/STM32duino-bootloader/blob/master/binaries/generic_boot20_pc13.bin
+
 Link da biblioteca:
 http://dan.drown.org/stm32duino/package_STM32duino_index.json
 
