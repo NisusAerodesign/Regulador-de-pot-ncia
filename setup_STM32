@@ -1,0 +1,12 @@
+Instruções de como fazer o setup do STM32 com o conversor USB para TTL:
+https://www.arduinoecia.com.br/como-programar-o-stm32-via-usb-com-ide-arduino-e-sem-precisar-do-gravador/
+https://github.com/palhartinger/HowTo-STM32F103C8T6/wiki/6_Programming-with-UART
+
+Link da biblioteca:
+http://dan.drown.org/stm32duino/package_STM32duino_index.json
+
+Configuração Arduino:
+Placa: Generic STM32F103C6 / fake STM32F103C8
+Upload method: Serial
+
+Dar Reset antes de fazer upload do código
