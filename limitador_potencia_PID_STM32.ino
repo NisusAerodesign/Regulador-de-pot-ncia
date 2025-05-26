@@ -174,7 +174,7 @@ void loop() {
     float pid_input = potteor;
     float pid_output = arm_pid_f32(&PID, pid_input - potreal); //A partir disso o programa calcula o erro entre a pot teorica e a pot real medida (pelo metodo PID)
 
-    if (potteor < threshold) { //Se o erro (em W) for maior que um threshold definido, o erro é adicionado ao cmdESC e depois é comandado em ESC.write (linha 163)
+    if (potteor < threshold) { //Se a potencia for menor que o threshold de ativação, o limitador não liga.
       cmdESC = 0;
     } else {
       cmdESC += pid_output;
