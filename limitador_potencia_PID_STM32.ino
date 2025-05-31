@@ -9,13 +9,13 @@
 //Documentação dos comandos PID
 
 #define correnteII 30.0 //Corrente de regulagem
-#define potlimit 660.0 //Limite de potência
-//#define fcv 168.61 //Fator de correção da tensão (limitador 1)
-#define fcv 179.8 //Fator de correção da tensão (limitador 2)
+#define potlimit 600.0 //Limite de potência
+#define fcv 168.61 //Fator de correção da tensão (limitador 1)
+//#define fcv 179.8 //Fator de correção da tensão (limitador 2)
 #define ansdelay 550 //Coeficiente de atraso na resposta do limitador (mantido do codigo antigo, mas não usado com comando PID)
-#define threshold 5.0 //Threshold de ativação do limitador (em watts)
+#define threshold 50.0 //Threshold de ativação do limitador (em watts)
 #define samples 50000 //Quantidade de amostras para calibragem
-#define window 30 //Janela de amostras para média de corrente
+#define window 10 //Janela de amostras para média de corrente
 #define EMA0 0 //Endereço de memória EEPROM onde ficará o fator de correção de corrente aritmético
 #define EMA1 1 //Endereço de memória EEPROM onde ficará o fator de correção de corrente geométrico
 #define EMA2 2 //Endereço de memória EEPROM onde ficará a informação se o fator aritmético é ou não negativo
@@ -51,9 +51,9 @@ void setup(){
   //resgatamos os fatores de correção da EEPROM
 
   //Configuração inicial do PID (o sistema calcula o erro a partir desses valores)
-  PID.Kp = 0.8f; //Proporcional (resposta rápida ao erro)
-  PID.Ki = 0.2f; //Integral (corrige os erros acumulados ao longo do tempo)
-  PID.Kd = 0.05f; //Derivativo (prevê a tendencia e ajuda a estabilizar a resposta)
+  PID.Kp = 0.07f; //Proporcional (resposta rápida ao erro)
+  PID.Ki = 0.62f; //Integral (corrige os erros acumulados ao longo do tempo)
+  PID.Kd = 0.01f; //Derivativo (prevê a tendencia e ajuda a estabilizar a resposta)
   arm_pid_init_f32(&PID, 1);
 
   //COMO CALIBRAR O PID!!!
@@ -63,6 +63,7 @@ void setup(){
   //Ti e Td não são usados diretamente no código, só são usados para converter, pq o arm_pid_f32 usa ganhos diretos
   //Atualizar Kp, Ki e Kd no código, depois testar e refinar: se for muito oscilante -> aumente Kd e/ou reduza Kp | se houver ouvershoot -> diminua Ki | se demorar para estabilizar -> aumente Kp um poucos | Se houver erro constante -> aumente Ki | Windup (acumulo excessivo de integral) -> atuador pode estar saturado, limitar integral (anti-windup) | Ruido amplificado -> Reduzir Kd | (existem outros casos mas esses são os principais)
   //Se ainda estiver muito instavel, imprimir o erro, saida pid (pid_output), potreal e potteor podem pode ajudar a visualizar como o sistema reage
+  //Para ajustar os valores do PID por serial, use kp <valor>, ki <valor>, kd <valor> e reset (zera os valores)
   //Ou só coloca valores genéricos e faz por tentativa e erro ;)
 }
 
@@ -70,8 +71,36 @@ void potato(){ //Função para impedir que um clique do botão avance varias rot
   ctt = routine;
 }
 
+void checkSerialCommands() { //Ajuste de PID por Serial
+  if (Serial.available()) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+
+    if (cmd.startsWith("kp ")) {
+      PID.Kp = cmd.substring(3).toFloat();
+      Serial.print("Kp atualizado para: ");
+      Serial.println(PID.Kp);
+    } else if (cmd.startsWith("ki ")) {
+      PID.Ki = cmd.substring(3).toFloat();
+      Serial.print("Ki atualizado para: ");
+      Serial.println(PID.Ki);
+    } else if (cmd.startsWith("kd ")) {
+      PID.Kd = cmd.substring(3).toFloat();
+      Serial.print("Kd atualizado para: ");
+      Serial.println(PID.Kd);
+    } else if (cmd.startsWith("reset")) {
+      PID.Kp = 0;
+      PID.Ki = 0;
+      PID.Kd = 0;
+      Serial.println("Gains resetados para 0");
+    }
+    arm_pid_init_f32(&PID, 1); // Reaplica os ganhos
+  }
+}
+//=======================
+
 void loop() {
-  while (ctt == 1){ //Rotina 1 (calibra o offset do sensor de corrente (nada a ver com o offset do PID), "calibra" o sensor)
+  while (ctt == 1){
     soma = 0;
     digitalWrite(PB13, HIGH);
     for (int ct2 = 0; ct2 < samples; ct2 ++){
@@ -108,18 +137,19 @@ void loop() {
     ctt = 0;
   }
 
-  if (ctt == 2){ //Rotina 2 (permite que acelere até a corrente alvo)
+  if (ctt == 2){
     digitalWrite(PB13, HIGH);
     delay(1000);
     routine = 3;
     while(ctt == 2){
       cmdESC = (pulseIn(PA7, HIGH) - 942)*0.18;
       ESC.write(cmdESC);
+      checkSerialCommands(); //Permite ajustar PID enquanto acelera
     }
     digitalWrite(PB13, LOW);
   }
 
-  while (ctt == 3){ //Rotina 3 (calibração do ganho proporcional da corrente)
+  while (ctt == 3){
     soma2 = 0;
     digitalWrite(PB13, HIGH);
     for (int ct2 = 0; ct2 < samples; ct2 ++){
@@ -156,7 +186,7 @@ void loop() {
     ctt = 0;
   }
 
-  while (ctt == 0){ //Rotina 0 (Limitador/PID)
+  while (ctt == 0){
     for (int ct2 = 0; ct2 < window; ct2++){
       t2 += (analogRead(PA0) / fcv);
       a1 += analogRead(PA5);
@@ -168,17 +198,34 @@ void loop() {
     a1 = 0;
     potreal = (corrente * tensao);
     comando = (pulseIn(PA7, HIGH) - 942)/10.0;
-    potteor = potlimit * comando / 100; 
-    //O programa lê a corrente, tensão e o comando por rádio para calcular a potencia real e teorica a partir disso
+    potteor = potlimit * comando / 100;
 
     float pid_input = potteor;
-    float pid_output = arm_pid_f32(&PID, pid_input - potreal); //A partir disso o programa calcula o erro entre a pot teorica e a pot real medida (pelo metodo PID)
+    float pid_output = arm_pid_f32(&PID, pid_input - potreal);
 
-    if (potteor < threshold) { //Se a potencia for menor que o threshold de ativação, o limitador não liga.
+    Serial.print(potreal); //Imprime os valores 
+    Serial.print(" | ");
+    Serial.print(potteor);
+    Serial.print(" | ");
+    Serial.print(corrente);
+    Serial.print(" | ");
+    Serial.print(tensao);
+    Serial.print(" | ");
+    Serial.print(PID.Kp);
+    Serial.print(" | ");
+    Serial.print(PID.Ki);
+    Serial.print(" | ");
+    Serial.print(PID.Kd);
+    Serial.print(" | ");
+    Serial.println(pid_output);
+
+    if (potteor < threshold) {
       cmdESC = 0;
     } else {
       cmdESC += pid_output;
-      cmdESC = constrain(cmdESC, 0, 100); //Evita valores fora do limite do ESC
+      cmdESC = constrain(cmdESC, 0, 100);
     }
+
+    checkSerialCommands(); //Verifica comandos PID enquanto roda
   }
 }
