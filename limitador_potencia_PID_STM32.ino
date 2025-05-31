@@ -97,7 +97,6 @@ void checkSerialCommands() { //Ajuste de PID por Serial
     arm_pid_init_f32(&PID, 1); // Reaplica os ganhos
   }
 }
-//=======================
 
 void loop() {
   while (ctt == 1){
