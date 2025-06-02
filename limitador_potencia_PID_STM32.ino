@@ -29,6 +29,8 @@ int negativo, negativo2;
 float a1, a2, a3, a4, a5;
 float tensao = 0.00, t2 = 0.0, corrente = 0.00, comando = 0.00, potreal, potteor;
 float cmdESC = 0;
+unsigned long lastTime = 0;
+const unsigned long sampleInterval = 5000; // Intervalo de amostragem (5ms = 200hz)
 
 Servo ESC;
 
@@ -94,12 +96,13 @@ void checkSerialCommands() { //Ajuste de PID por Serial
       PID.Kd = 0;
       Serial.println("Gains resetados para 0");
     }
+    arm_pid_reset_f32(&PID); //Reseta o PID para evitar acumulo de erro
     arm_pid_init_f32(&PID, 1); // Reaplica os ganhos
   }
 }
 
 void loop() {
-  while (ctt == 1){
+  while (ctt == 1){ //Rotina 1 (calibra o offset do sensor de corrente (nada a ver com o offset do PID), "calibra" o sensor)
     soma = 0;
     digitalWrite(PB13, HIGH);
     for (int ct2 = 0; ct2 < samples; ct2 ++){
@@ -136,7 +139,7 @@ void loop() {
     ctt = 0;
   }
 
-  if (ctt == 2){
+  if (ctt == 2){ //Rotina 2 (permite que acelere até a corrente alvo)
     digitalWrite(PB13, HIGH);
     delay(1000);
     routine = 3;
@@ -148,7 +151,7 @@ void loop() {
     digitalWrite(PB13, LOW);
   }
 
-  while (ctt == 3){
+  while (ctt == 3){ //Rotina 3 (calibração do ganho proporcional da corrente)
     soma2 = 0;
     digitalWrite(PB13, HIGH);
     for (int ct2 = 0; ct2 < samples; ct2 ++){
@@ -185,7 +188,11 @@ void loop() {
     ctt = 0;
   }
 
-  while (ctt == 0){
+  while (ctt == 0){ //Rotina 0 (limitador/PID)
+    unsigned long now = micros();
+    if (now - lastTime >= sampleInterval) { //Executa a cada 5ms pra ter um clock estavel pro PID
+      lastTime = now;
+    
     for (int ct2 = 0; ct2 < window; ct2++){
       t2 += (analogRead(PA0) / fcv);
       a1 += analogRead(PA5);
@@ -200,9 +207,9 @@ void loop() {
     potteor = potlimit * comando / 100;
 
     float pid_input = potteor;
-    float pid_output = arm_pid_f32(&PID, pid_input - potreal);
+    float pid_output = arm_pid_f32(&PID, pid_input - potreal); //A partir disso o programa calcula o erro entre a pot teorica e a pot real medida (pelo metodo PID)
 
-    Serial.print(potreal); //Imprime os valores 
+    Serial.print(potreal); //Imprime os valores (para calibracao)
     Serial.print(" | ");
     Serial.print(potteor);
     Serial.print(" | ");
@@ -218,13 +225,16 @@ void loop() {
     Serial.print(" | ");
     Serial.println(pid_output);
 
-    if (potteor < threshold) {
+    if (potteor < threshold) { //Se a potencia for menor que o threshold de ativação, o limitador não liga.
       cmdESC = 0;
     } else {
-      cmdESC += pid_output;
+      if((cmdESC < 100 && pid_output > 0) || (cmdESC > 0 && pid_output < 0)) { //Anti-windup por clamping
+        cmdESC += pid_output;
+    }
       cmdESC = constrain(cmdESC, 0, 100);
     }
 
-    checkSerialCommands(); //Verifica comandos PID enquanto roda
+    checkSerialCommands(); //Verifica comandos por serial para atualizar o PID enquanto roda
   }
+}
 }
