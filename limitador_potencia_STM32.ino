@@ -114,7 +114,7 @@ void loop() {
 			routine = 3;
 
 			while(ctt == 2){
-				cmdESC = (pulseIn(PA7, HIGH) - 942)*0.18;
+				cmdESC = (pulseIn(PA7, HIGH) - radioLow)*0.18;
 				ESC.write(cmdESC);
 			}
 
@@ -178,7 +178,7 @@ void loop() {
 	t2 = 0;
 
 	potreal = (corrente*tensao); //calcula a potencia real
-	comando = (pulseIn(PA7, HIGH) - 942)/10.0; //le o comando do radio
+	comando = (pulseIn(PA7, HIGH) - radioLow)/10.0; //le o comando do radio
 	potteor = potlimit*comando/100; //calcula a potencia teorica de acordo com o comando
 
 	Serial.print(potreal); //Imprime os valores (para calibracao)
